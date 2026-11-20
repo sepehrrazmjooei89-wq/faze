@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل پروژه‌های معماری داخلی</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#e8ebe7;--surface:#f6f8f5;--ink:#1d2824;--muted:#5b6862;--line:#1d282433;--accent:#a8763e;--danger:#a33a2f}
+@media (prefers-color-scheme:dark){:root{--bg:#141b18;--surface:#1c2521;--ink:#e6eae6;--muted:#9aa89f;--line:#e6eae633;--accent:#d19a5c;--danger:#e07a6c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Tahoma,"Segoe UI",sans-serif;line-height:1.8}
+.wrap{max-width:720px;margin:0 auto;padding:20px}
+h1{font-size:1.5rem;margin:8px 0 4px}
+.muted{color:var(--muted);font-size:.92rem}
+.box{background:var(--surface);border:1px solid var(--line);padding:18px;margin:16px 0;border-radius:4px}
+label{display:block;margin-bottom:12px;font-size:.92rem;color:var(--muted)}
+input,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);padding:10px;border-radius:4px;margin-top:4px}
+input[type=email],input[type=password]{direction:ltr;text-align:left}
+button{font:inherit;cursor:pointer;border:1px solid var(--ink);background:var(--ink);color:var(--bg);padding:9px 18px;border-radius:4px}
+button.alt{background:none;color:var(--ink)}
+button.del{background:none;color:var(--danger);border-color:var(--danger)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#msg{min-height:1.6em;color:var(--accent);font-size:.93rem}
+.hidden{display:none}
+.proj h3{margin:0 0 8px;font-size:1.05rem}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>پنل پروژه‌های من</h1>
+  <div id="msg" role="status"></div>
+
+  <div id="auth" class="box hidden">
+    <p class="muted">برای ساخت پنل شخصی ثبت‌نام کنید یا وارد شوید.</p>
+    <label>ایمیل<input id="em" type="email" autocomplete="email"></label>
+    <label>رمز عبور (حداقل ۶ حرف)<input id="pw" type="password" autocomplete="current-password"></label>
+    <div class="row">
+      <button id="login">ورود</button>
+      <button id="signup" class="alt">ثبت‌نام</button>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="top"><span class="muted" id="who"></span><button id="out" class="alt">خروج</button></div>
+    <div class="box">
+      <label>عنوان پروژه<input id="t" placeholder="مثلاً: طراحی آشپزخانه"></label>
+      <label>یادداشت<textarea id="n" rows="3"></textarea></label>
+      <button id="add">افزودن پروژه</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://ifgvnuygidtokvogocak.supabase.co";
+const SUPABASE_KEY = "sb_publishable_ySltbGT0aiw9FBr1DZqb2w_KM1kjkre";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const say = t => { $("msg").textContent = t || ""; };
+
+async function show(session){
+  $("auth").classList.toggle("hidden", !!session);
+  $("app").classList.toggle("hidden", !session);
+  if(session){ $("who").textContent = session.user.email; load(); }
+}
+
+async function load(){
+  const { data, error } = await db.from("projects").select("*").order("created_at",{ascending:false});
+  if(error){ say("خطا در دریافت پروژه‌ها: " + error.message); return; }
+  const list = $("list"); list.innerHTML = "";
+  if(!data.length){ list.innerHTML = '<p class="muted">هنوز پروژه‌ای ندارید. اولین پروژه را بالا بسازید.</p>'; return; }
+  data.forEach(p => {
+    const d = document.createElement("div"); d.className = "box proj";
+    const h = document.createElement("h3"); h.textContent = p.title;
+    const ta = document.createElement("textarea"); ta.rows = 3; ta.value = p.notes || "";
+    const r = document.createElement("div"); r.className = "row"; r.style.marginTop = "10px";
+    const s = document.createElement("button"); s.textContent = "ذخیره یادداشت";
+    s.onclick = async () => { const {error} = await db.from("projects").update({notes: ta.value}).eq("id", p.id); say(error ? "خطا: " + error.message : "ذخیره شد."); };
+    const x = document.createElement("button"); x.className = "del"; x.textContent = "حذف";
+    x.onclick = async () => { if(!confirm("این پروژه حذف شود؟")) return; const {error} = await db.from("projects").delete().eq("id", p.id); if(error) say("خطا: " + error.message); else load(); };
+    r.append(s, x); d.append(h, ta, r); list.append(d);
+  });
+}
+
+$("signup").onclick = async () => {
+  say("");
+  const { data, error } = await db.auth.signUp({ email: $("em").value.trim(), password: $("pw").value });
+  if(error) return say("خطا: " + error.message);
+  if(!data.session) say("ثبت‌نام انجام شد. ایمیل خود را برای تأیید بررسی کنید.");
+};
+$("login").onclick = async () => {
+  say("");
+  const { error } = await db.auth.signInWithPassword({ email: $("em").value.trim(), password: $("pw").value });
+  if(error) say("خطا: " + error.message);
+};
+$("out").onclick = () => db.auth.signOut();
+$("add").onclick = async () => {
+  const title = $("t").value.trim();
+  if(!title) return say("عنوان پروژه را بنویسید.");
+  const { error } = await db.from("projects").insert({ title, notes: $("n").value });
+  if(error) return say("خطا: " + error.message);
+  $("t").value = ""; $("n").value = ""; say("پروژه اضافه شد."); load();
+};
+
+db.auth.onAuthStateChange((_e, session) => show(session));
+db.auth.getSession().then(({data}) => show(data.session));
+</script>
+</body>
+</html>
